@@ -1,19 +1,16 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.optimize import least_squares, fsolve
+from scipy.optimize import least_squares
 from scipy.integrate import simpson
 import warnings
 
-# Suppress runtime warnings from the optimizer during bounded searches
 warnings.filterwarnings('ignore')
 
 # Default parameters
-gamma_sq = 0.4
+gamma_sq = 0.25
 eta = 1.0
-theta = 3.0
-beta = 1 # Inverse temperature (beta > 0)
-xi_values_to_plot = [-0.1, 0.3, 0.75] 
-
+theta = 2.0
+beta = 0.5  # Inverse temperature (beta > 0)
 
 def J_map(s, c0, c1, nu):
     """Conformal mapping J_{c0, c1}(s)."""
@@ -132,9 +129,8 @@ def solve_moduli(xi, gamma_sq, eta, theta, beta):
         initial_guess = [c0, c1, s1, s2, max(sa, sb) * 1.2, max(sa, sb) * 0.8]
         bounds = ([-np.inf, -np.inf, 1e-6, 1e-6, 1e-6, 1e-6], [np.inf, np.inf, np.inf, np.inf, np.inf, np.inf])
         
-        # High-precision solver configuration
         res = least_squares(sys_eqs, initial_guess, bounds=bounds, method='trf', 
-                            ftol=1e-13, xtol=1e-13, gtol=1e-13, max_nfev=5000)
+                            ftol=1e-12, xtol=1e-12, gtol=1e-12)
         
         c0, c1, s1, s2, q1, q2 = res.x
         
@@ -155,7 +151,7 @@ def solve_moduli(xi, gamma_sq, eta, theta, beta):
     }
 
 def compute_density_row(x_grid, xi, gamma_sq, eta, theta, beta):
-    """Computes the density using dynamic geometric steering to prevent scattering."""
+    """Computes the density using constrained least_squares steering to eliminate scattering."""
     try:
         p = solve_moduli(xi, gamma_sq, eta, theta, beta)
     except Exception:
@@ -181,73 +177,63 @@ def compute_density_row(x_grid, xi, gamma_sq, eta, theta, beta):
                 val = J_map(vars_arr[0] + 1j*vars_arr[1], p['c0'], p['c1'], p['nu'])
                 return [np.real(val) - y_val, np.imag(val)]
             
-            # --- DYNAMIC GEOMETRIC STEERING ---
-            # Dynamically map the target value 'y' to an exact angle on the upper semicircle.
-            # This perfectly prevents 'fsolve' from snapping to the wrong branch or scattering.
-            t = (y_val - p['a']) / (p['b'] - p['a'])
-            t = np.clip(t, 0.01, 0.99) # Keep safely away from strictly real endpoints
-            
-            if p['J_sa'] < p['J_sb']:
-                angle = np.pi * (1 - t) if p['sa'] < p['sb'] else np.pi * t
-            else:
-                angle = np.pi * (1 - t) if p['sb'] < p['sa'] else np.pi * t
-                
+            # Geometric tracker
+            t = np.clip((y_val - p['a']) / (p['b'] - p['a']), 0.01, 0.99) 
+            angle = np.pi * (1 - t) if (p['sa'] < p['sb']) ^ (p['J_sa'] > p['J_sb']) else np.pi * t
             s_guess = mid + R * np.exp(1j * angle)
             
-            # Use ultra-tight tolerance for smooth rendering
-            r, _, ier, _ = fsolve(obj, [np.real(s_guess), np.imag(s_guess)], xtol=1e-11, full_output=True)
+            # --- THE BULLETPROOF BARRICADE ---
+            # Bounds strictly block the solver from stepping into the lower half plane (v < 0).
+            res = least_squares(obj, [np.real(s_guess), np.imag(s_guess)], 
+                                bounds=([-np.inf, 1e-12], [np.inf, np.inf]),
+                                ftol=1e-11, xtol=1e-11)
             
-            # Fallback if the solver drifted to the real line
-            if ier != 1 or r[1] < 1e-6:
-                r, _, ier, _ = fsolve(obj, [mid, R], xtol=1e-11, full_output=True)
-                
-            I_p = r[0] + 1j*r[1]
+            I_p = res.x[0] + 1j*res.x[1]
             
-            # Safely evaluate the argument product to respect the constraint bound
+            # Form the exact ratio defined in Theorem 3.9 (s2 is in numerator, s1 is in denominator)
             if p['is_supercritical']:
-                ratio = ((p['q1'] - I_p) / (p['q2'] - I_p)) * ((p['s1'] - I_p) / (p['s2'] - I_p))
+                ratio1 = ((p['q1'] - I_p) / (p['q2'] - I_p))
+                ratio2 = ((p['s2'] - I_p) / (p['s1'] - I_p))
+                arg_part = np.abs(np.angle(ratio1)) + np.abs(np.angle(ratio2))
             else:
-                ratio = (p['s1'] - I_p) / (p['s2'] - I_p)
-                
-            arg_part = np.abs(np.angle(ratio))
+                ratio = (p['s2'] - I_p) / (p['s1'] - I_p)
+                arg_part = np.abs(np.angle(ratio))
+            
             omega = (1.0 / (np.pi * beta * p['delta'] * y_val)) * arg_part
             mu_vals[i] = p['pref_const'] * (x_val**(p['pref_const'] - 1)) * omega
             
-    # Clean any accidental NaNs caused by the singularity near x=0 to ensure integration succeeds
     return np.nan_to_num(mu_vals, nan=0.0, posinf=0.0, neginf=0.0), p['regime_name'], p['kappa']
 
 
 # --- PLOTTING & INTEGRATION LOGIC ---
 
-x_grid = np.linspace(0.0001, 0.9999, 1000) 
-
+x_grid = np.linspace(0.0001, 0.9999, 1500) 
+xi_values_to_plot = [-0.1, 0.3, 0.85] 
 
 plt.figure(figsize=(12, 7))
 colors = ['#1f77b4', '#ff7f0e', '#2ca02c']
 
 print(f"--- Numerical Integration Results (Beta={beta}) ---")
-print("Expected integral area should be approximately 1.0 (probability measure).")
+print("Expected mathematical integral mass: 1.000")
 
 for idx, xi in enumerate(xi_values_to_plot):
     print(f"  -> Processing xi = {xi} ...")
     mu_vals, regime_name, kappa = compute_density_row(x_grid, xi, gamma_sq, eta, theta, beta)
     
-    if kappa is None:
-        continue
+    if kappa is None: continue
         
     line, = plt.plot(x_grid, mu_vals, linewidth=2.5, color=colors[idx], 
                      label=f'$\\xi={xi}$ | {regime_name}')
     plt.fill_between(x_grid, mu_vals, color=line.get_color(), alpha=0.15)
     
-    # Plot the Upper Constraint Limit 1/(beta * kappa * x)
     upper_bound = 1.0 / (beta * kappa * x_grid)
     plt.plot(x_grid, upper_bound, linewidth=1.5, linestyle='--', color=line.get_color(), alpha=0.7)
     
-    # Evaluate numerical integral via Simpson's rule
+    # Accurate Simpson integration over the dense grid
     integral_val = simpson(mu_vals, x=x_grid)
     print(f"     Integral of mu(x) dx: {integral_val:.4f}")
 
-plt.title(f'Density $\\mu(x)$ and Constraints (Dashed)\n$\\beta={beta}$, $\\gamma^2={gamma_sq}$, $\\eta={eta}$, $\\theta={theta}$', size=16)
+plt.title(f'Density $\\mu(x)$ and Upper Constraints (Dashed)\n$\\beta={beta}$, $\\gamma^2={gamma_sq}$, $\\eta={eta}$, $\\theta={theta}$', size=16)
 plt.xlabel('$x$ (Position)', size=14)
 plt.ylabel('$\\mu(x)$', rotation=0, labelpad=25, size=14)
 
