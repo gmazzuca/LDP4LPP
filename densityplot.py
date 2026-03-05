@@ -1,17 +1,15 @@
+# Consolidated imports and helper functions for density/LPP plots
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import fsolve
+from scipy.integrate import quad
 
-# --- Parameters ---
+# Default parameters
 gamma_sq = 0.4
-eta = 1.0
-theta = 2.0
+eta = 2.0
+theta = 5.0
 
-# Selected xi values for Regimes (a), (b), (c)
-xi_values_to_plot = [-0.25, 0.25, 0.9]
-
-# --- Helper Functions (Same as before) ---
-
+# -- Helper functions shared by all plots --
 def get_params(xi, gamma_sq, eta, theta):
     if -gamma_sq < xi <= 0:
         kappa = gamma_sq - abs(xi)
@@ -41,8 +39,9 @@ def get_params(xi, gamma_sq, eta, theta):
         prefactor_pow = theta
         prefactor_const = theta
     else:
-        raise ValueError(f"xi={xi} is out of valid range")
+        raise ValueError(f"xi={xi} out of valid range")
     return nu, m1, m2, n1, n2, prefactor_pow, prefactor_const
+
 
 def compute_constants(nu, m1, m2, n1, n2):
     m1_tilde = m1 * (n2 - n1)
@@ -56,12 +55,14 @@ def compute_constants(nu, m1, m2, n1, n2):
     sb = - (nu - 1)/(2*nu) + D / (2 * nu * c1)
     return c0, c1, s0, sa, sb
 
+
 def J_func(s, c0, c1, nu):
     term = (1 + 1/s + 0j)**(1/nu)
     return (c1 * s + c0) * term
 
+
 def solve_inverse_J(y, c0, c1, nu, sa, sb):
-    s_guess = (sa + sb) / 2.0 - 0.1j 
+    s_guess = (sa + sb) / 2.0 - 0.1j
     def equations(vars):
         s_real, s_imag = vars
         s = s_real + 1j * s_imag
@@ -70,17 +71,19 @@ def solve_inverse_J(y, c0, c1, nu, sa, sb):
     s_sol = fsolve(equations, [s_guess.real, s_guess.imag])
     return s_sol[0] + 1j*s_sol[1]
 
+
 def omega_density(y, nu, m1, m2, n1, n2):
     c0, c1, s0, sa, sb = compute_constants(nu, m1, m2, n1, n2)
-    a = J_func(sa, c0, c1, nu).real
-    b = J_func(sb, c0, c1, nu).real
-    if y <= a or y >= b:
+    a_val = J_func(sa, c0, c1, nu).real
+    b_val = J_func(sb, c0, c1, nu).real
+    if y <= a_val or y >= b_val:
         return 0.0
     s = solve_inverse_J(y, c0, c1, nu, sa, sb)
     m1_tilde = m1 * (n2 - n1)
     prefactor = (m2 + 1) * (m1_tilde * nu + nu + m2 + 1) / (nu * (m1_tilde + 1) * np.pi * y)
     val = 1.0 / (s - s0)
     return prefactor * abs(val.imag)
+
 
 def mu_density(x, xi, gamma_sq, eta, theta):
     try:
@@ -89,44 +92,52 @@ def mu_density(x, xi, gamma_sq, eta, theta):
         return 0.0
     y = x**p_pow
     c0, c1, s0, sa, sb = compute_constants(nu, m1, m2, n1, n2)
-    a = J_func(sa, c0, c1, nu).real
-    b = J_func(sb, c0, c1, nu).real
-    if y <= a or y >= b:
+    a_val = J_func(sa, c0, c1, nu).real
+    b_val = J_func(sb, c0, c1, nu).real
+    if y <= a_val or y >= b_val:
         return 0.0
     om = omega_density(y, nu, m1, m2, n1, n2)
     return p_const * (x**(p_const - 1)) * om
 
-# --- Plotting Code ---
+
+# RHP / grid heatmap (from RHP_min_new.py)
+xi_res = 700
+x_res = 700
+
+xi_vals = np.linspace(-gamma_sq + 0.01, 0.99, xi_res)
+x_vals = np.linspace(0.01, 0.99, x_res)
+boundary = 1 - gamma_sq
+xi_vals = xi_vals[np.abs(xi_vals - boundary) > 0.01]
+xi_vals = xi_vals[np.abs(xi_vals) > 0.01]
+
+X_grid, XI_grid = np.meshgrid(x_vals, xi_vals)
+Z_grid = np.zeros_like(X_grid)
+
+print("Computing grid values...")
+for i in range(len(xi_vals)):
+    xi = xi_vals[i]
+    for j in range(len(x_vals)):
+        x = x_vals[j]
+        Z_grid[i, j] = mu_density(x, xi, gamma_sq, eta, theta)
+
+# Transform for color mapping
+scale_factor = 3.0
+Z_transformed = 1 - np.exp(-Z_grid / scale_factor)
 
 plt.figure(figsize=(10, 6))
+mesh = plt.pcolormesh(XI_grid, X_grid, Z_transformed, cmap='jet', shading='auto', vmin=0, vmax=1)
+true_ticks = [0, 0.5, 1, 1.5, 2, 3, 5, 10, 40]
+transformed_locs = [1 - np.exp(-v / scale_factor) for v in true_ticks]
 
-x_grid = np.linspace(0.001, 0.999, 400) # Grid for x-axis
+cbar = plt.colorbar(mesh)
+cbar.set_ticks(transformed_locs)
+cbar.set_ticklabels([str(v) for v in true_ticks])
+cbar.set_label(r'$\mu(x)$', rotation=360, labelpad=15, fontsize=15)
 
-for xi in xi_values_to_plot:
-    print(f"Calculating density for xi = {xi}...")
-    
-    # Calculate mu(x)
-    mu_vals = []
-    for x in x_grid:
-        mu_vals.append(mu_density(x, xi, gamma_sq, eta, theta))
-    
-    # Determine label
-    regime = ""
-    if -gamma_sq < xi <= 0: regime = "(a)"
-    elif 0 < xi <= 1 - gamma_sq: regime = "(b)"
-    elif 1 - gamma_sq < xi < 1: regime = "(c)"
-    
-    # Plot line
-    line, = plt.plot(x_grid, mu_vals, linewidth=2, label=f'$\\xi={xi}$ {regime}')
-    
-    # Add fill under curve (using the same color as the line)
-    plt.fill_between(x_grid, mu_vals, color=line.get_color(), alpha=0.15)
-
-plt.title(f'Density $\\mu(x)$ for different $\\xi$ ($\\gamma^2={gamma_sq}, \\eta={eta}, \\theta={theta}$)')
-plt.xlabel('$x$')
-plt.ylabel('$\\mu(x)$')
-plt.xlim(0, 1)
-plt.ylim(bottom=0)
-plt.legend()
-plt.grid(True, alpha=0.3)
+plt.xlabel(r'$\xi$ (Time Parameter)', fontsize=15)
+plt.ylabel(r'$x$ (Position)', fontsize=15)
+plt.title(r' MB Point Process, $\theta=%.1f$, $\eta=%.1f$, $\gamma^2=%.2f$' % (theta, eta, gamma_sq), fontsize=20)
+plt.axvline(x=1-gamma_sq, color='white', linestyle='--', alpha=0.8, label=r'Transition $1-\gamma^2$')
+plt.axvline(x=0, color='white', linestyle='--', alpha=0.8, label=r'Transition $0$')
+plt.legend(loc='lower right', fontsize=12)
 plt.show()
