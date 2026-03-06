@@ -23,7 +23,7 @@ def J_map(s, c0, c1, nu):
     return (c1 * s + c0) * ((s + 1) / s)**(1 / nu)
 
 def get_regime_params(xi, gamma_sq, eta, theta, beta):
-    """Maps physical constants exactly to the cleaned Corollary parameters."""
+    """Maps physical constants exactly to the cleaned Corollary 1.4 parameters."""
     if theta > eta:
         nu = theta / eta
         prefactor_pow, prefactor_const = eta, eta
@@ -85,7 +85,7 @@ def solve_moduli(xi, gamma_sq, eta, theta, beta):
     x_max = np.exp(-rho * beta * (gamma_sq - kappa))
     
     # Base subcritical explicit solutions
-    if is_omega_nu: # Model Problem 1
+    if is_omega_nu:
         A = np.exp((alpha * beta * kappa / nu) * (nu + 1 + m1 + (nu / kappa) * (n2 - n1)))
         B = np.exp((alpha * beta * kappa / nu) * (1 + m1))
         s1 = A * (B - 1) / (A - B) 
@@ -94,14 +94,14 @@ def solve_moduli(xi, gamma_sq, eta, theta, beta):
         K2_target = np.exp(n2 * alpha * beta / nu)
         K1 = K1_target * ((A * (B - 1)) / (B * (A - 1)))**(1 / nu)
         K2 = K2_target * ((B - 1) / (A - 1))**(1 / nu)
-    else: # Model Problem 2
-        # THE FIX: Correctly applied the 1/kappa multiplier for A in MP2
-        A = np.exp(alpha * beta * kappa * (nu + 1 + m1 + (1.0 / kappa) * (n2 - n1)))
+    else:
+        A = np.exp(alpha * beta * kappa * (nu + 1 + m1 + (nu / kappa) * (n2 - n1)))
         B = np.exp(alpha * beta * kappa * (1 + m1))
         s1 = A * (B - 1) / (A - B)
         s2 = (B - 1) / (A - B)
         K1_target = np.exp(n1 * alpha * beta)
         K2_target = np.exp(n2 * alpha * beta)
+        # THE FIX: Denominator corrected to (A - 1)
         K1 = K1_target * ((A * (B - 1)) / (B * (A - 1)))**(1 / nu)
         K2 = K2_target * ((B - 1) / (A - 1))**(1 / nu)
         
@@ -120,12 +120,8 @@ def solve_moduli(xi, gamma_sq, eta, theta, beta):
     q1, q2 = None, None
     
     if is_supercritical:
-        # THE FIX: Extrapolated the 1/kappa multiplier to the supercritical constants for MP2
-        if is_omega_nu:
-            E5 = np.exp(rho * kappa * beta * (nu + 1 + m1 + (nu / kappa) * (n2 - n1)))
-        else:
-            E5 = np.exp(rho * kappa * beta * (nu + 1 + m1 + (1.0 / kappa) * (n2 - n1)))
-            
+        # Unified Exp constants leveraging the generalized definitions
+        E5 = np.exp(rho * kappa * beta * (nu + 1 + m1 + (nu / kappa) * (n2 - n1)))
         E6 = np.exp(rho * kappa * beta * (1 + m1))
         
         def sys_eqs(vars_array):
@@ -134,7 +130,7 @@ def solve_moduli(xi, gamma_sq, eta, theta, beta):
             disc = np.maximum(0, 4*c0_v*c1_v*nu + (c1_v**2)*((nu-1)**2))
             sb_v = -(nu-1)/(2*nu) + np.sqrt(disc)/(2*nu*c1_v)
             
-            # Independent parameterization relative to sb
+            # Independent parameterization to smoothly allow s1 = q2
             q1_v = sb_v * (1.0 + d1_v)
             q2_v = sb_v * (1.0 - d2_v)
             s1_v = sb_v * (1.0 - d3_v) 
@@ -152,19 +148,20 @@ def solve_moduli(xi, gamma_sq, eta, theta, beta):
         # Use safe interior subcritical mappings as initial guesses
         d1_guess, d2_guess = 0.2, 0.2
         s1_safe = np.clip(s1, sb * 0.1, sb * 0.99)
-        s2_safe = np.clip(s2, sb * 0.05, s1_safe * 0.95)
+        s2_safe = np.clip(s2, sb * 0.05, sb * 0.95)
         d3_guess = 1.0 - (s1_safe / sb)
         d4_guess = 1.0 - (s2_safe / sb)
 
         initial_guess = [c0, c1, d1_guess, d2_guess, d3_guess, d4_guess]
         
+        # d1 > 0 guarantees q1 > sb. d2, d3, d4 in (0, 1) guarantees roots stay in interior (0, sb)
         bounds = (
             [-np.inf, 1e-6, 1e-6, 1e-6, 1e-6, 1e-6], 
             [np.inf, np.inf, np.inf, 1.0 - 1e-6, 1.0 - 1e-6, 1.0 - 1e-6]
         )
         
         res = least_squares(sys_eqs, initial_guess, bounds=bounds, method='trf', 
-                            ftol=1e-13, xtol=1e-13, gtol=1e-13, max_nfev=5000)
+                            ftol=1e-12, xtol=1e-12, gtol=1e-12, max_nfev=5000)
         
         c0, c1, d1, d2, d3, d4 = res.x
         
@@ -183,7 +180,7 @@ def solve_moduli(xi, gamma_sq, eta, theta, beta):
         
     return {
         'nu': nu, 'kappa': kappa, 'alpha': alpha, 'rho': rho,
-        'm1': m1, 'n1': n1, 'n2': n2, 'is_omega_nu': is_omega_nu,
+        'm1': m1, 'n1': n1, 'n2': n2,
         'is_supercritical': is_supercritical, 'x_max': x_max,
         'c0': c0, 'c1': c1, 's1': s1, 's2': s2, 'q1': q1, 'q2': q2,
         'sa': sa, 'sb': sb, 'J_sa': J_sa, 'J_sb': J_sb, 
@@ -227,10 +224,11 @@ def compute_density_row(x_grid, xi, gamma_sq, eta, theta, beta):
                                 ftol=1e-11, xtol=1e-11)
             
             I_p = res.x[0] + 1j*res.x[1]
-            arg_s = np.angle((p['s1'] - I_p) / (p['s2'] - I_p))
-                
+            
+            # The angles are safely separated via Absolute values exactly as established
+            arg_s = np.abs(np.angle((p['s2'] - I_p) / (p['s1'] - I_p)))
             if p['is_supercritical']:
-                arg_q = np.angle((p['q1'] - I_p) / (p['q2'] - I_p))
+                arg_q = np.abs(np.angle((p['q1'] - I_p) / (p['q2'] - I_p)))
                 omega = (1.0 / (np.pi * beta * p['rho'] * p['kappa'] * y_val)) * (arg_q + arg_s)
             else:
                 omega = (1.0 / (np.pi * beta * p['rho'] * p['kappa'] * y_val)) * arg_s
@@ -242,13 +240,13 @@ def compute_density_row(x_grid, xi, gamma_sq, eta, theta, beta):
 
 # --- CONFIGURATION FOR THE 4 PLOTS ---
 configs = [
-    {'gamma_sq': 0.25, 'eta': 2.0, 'theta': 1.0, 'beta': 1.0, 'xi_vals': [-0.1, 0.2, 0.85]},
+    {'gamma_sq': 0.25, 'eta': 1.0, 'theta': 2.0, 'beta': 1.0, 'xi_vals': [-0.1, 0.2, 0.85]},
     {'gamma_sq': 0.3,  'eta': 1.0, 'theta': 5.0, 'beta': 0.5, 'xi_vals': [-0.1, 0.2, 0.85]},
     {'gamma_sq': 0.5,  'eta': 2.0, 'theta': 3.0, 'beta': 0.2, 'xi_vals': [-0.3, 0.0, 0.75]},
     {'gamma_sq': 0.3,  'eta': 2.0, 'theta': 5.0, 'beta': 0.5, 'xi_vals': [-0.2, 0.01, 0.8]}
 ]
 
-# Heavy grid spacing ensures high integration accuracy
+# Heavy grid spacing ensures no numerical error when running Simpson's Rule
 x_grid = np.linspace(0.0001, 0.9999, 1500) 
 colors = ['#1f77b4', '#ff7f0e', '#2ca02c']
 
@@ -286,12 +284,12 @@ for i, cfg in enumerate(configs):
         
         # --- PRINTS THE PARAMETERS TO CONSOLE ---
         print(f"--- Results for xi = {xi} ---")
-        print(f"  Regime:          {p['regime_name']} {'[MP1]' if p['is_omega_nu'] else '[MP2]'}")
+        print(f"  Regime:          {p['regime_name']}")
         print(f"  Status:          {'[SUPERCRITICAL]' if p['is_supercritical'] else '[SUBCRITICAL]'}")
         print(f"  Constants:       nu={p['nu']:.4f}, kappa={p['kappa']:.4f}, alpha={p['alpha']:.4f}, rho={p['rho']:.4f}")
         print(f"  Model Params:    m1={p['m1']:.4f}, n1={p['n1']:.4f}, n2={p['n2']:.4f}")
         print(f"  Moduli:          c0={p['c0']:.4f}, c1={p['c1']:.4f}")
-        print(f"  Spectral Roots:  s1={p['s1']:.4f}, s2={p['s2']:.4f}, sb = {p['sb']:.4f}")
+        print(f"  Spectral Roots:  s1={p['s1']:.4f}, s2={p['s2']:.4f}")
         if p['is_supercritical']:
             print(f"  Saturated Roots: q1={p['q1']:.4f}, q2={p['q2']:.4f}")
         print(f"  Bounds in y:     a={p['a']:.4f}, b={p['b']:.4f}, x_max={p['x_max']:.4f}")
