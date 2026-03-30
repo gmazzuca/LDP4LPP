@@ -238,24 +238,25 @@ def compute_density_row(x_grid, xi, gamma_sq, eta, theta, beta):
 
 # --- CONFIGURATION FOR THE 4 PLOTS ---
 configs = [
-    {'gamma_sq': 0.25, 'eta': 1.0, 'theta': 2.0, 'beta': 1.0, 'xi_vals': [-0.1, 0.2, 0.85]},
-    {'gamma_sq': 0.3,  'eta': 1.0, 'theta': 5.0, 'beta': 0.5, 'xi_vals': [-0.1, 0.2, 0.85]},
-    {'gamma_sq': 0.5,  'eta': 2.0, 'theta': 3.0, 'beta': 0.2, 'xi_vals': [-0.3, 0.0, 0.75]},
-    {'gamma_sq': 0.3,  'eta': 2.0, 'theta': 5.0, 'beta': 0.5, 'xi_vals': [-0.2, 0.01, 0.8]}
+    {'gamma_sq': 0.4, 'eta': 2.0, 'theta': 5.0, 'beta': 1.0, 'xi_vals': [-0.1, 0.2, 0.85]},
+    # {'gamma_sq': 0.3,  'eta': 1.0, 'theta': 5.0, 'beta': 0.5, 'xi_vals': [-0.1, 0.2, 0.85]},
+    # {'gamma_sq': 0.5,  'eta': 2.0, 'theta': 3.0, 'beta': 0.2, 'xi_vals': [-0.3, 0.0, 0.75]},
+    # {'gamma_sq': 0.3,  'eta': 2.0, 'theta': 5.0, 'beta': 0.5, 'xi_vals': [-0.2, 0.01, 0.8]}
 ]
 
 x_grid = np.linspace(0.0001, 0.9999, 1000) 
 colors = ['#1f77b4', '#ff7f0e', '#2ca02c']
 
-fig, axs = plt.subplots(2, 2, figsize=(16, 12))
-axs = axs.flatten()
+fig, axs = plt.subplots(1, 1, figsize=(16, 12))
+# axs = axs.flatten()
 
 print(f"==================================================")
 print(f"      COMPREHENSIVE NUMERICAL EVALUATION          ")
 print(f"==================================================\n")
 
 for i, cfg in enumerate(configs):
-    ax = axs[i]
+    # ax = axs[i]
+    ax = axs
     gamma_sq, eta, theta, beta = cfg['gamma_sq'], cfg['eta'], cfg['theta'], cfg['beta']
     xi_values_to_plot = cfg['xi_vals']
     
