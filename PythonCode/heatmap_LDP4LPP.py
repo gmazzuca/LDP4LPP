@@ -165,8 +165,8 @@ configs = [
 ]
 
 # EXTREMELY HIGH RESOLUTION (Expect a few minutes per plot)
-xi_res = 450
-x_res = 450
+xi_res = 300
+x_res = 300
 
 fig, axs = plt.subplots(2, 2, figsize=(20, 14))
 axs = axs.flatten()
@@ -247,6 +247,6 @@ for idx, cfg in enumerate(configs):
 # Adjust layout to accommodate the 4 independent colorbars 
 plt.tight_layout()
 file_name = "constrained_heatmaps_overlay_grid.pdf"
-plt.savefig(file_name, bbox_inches='tight', dpi=300)
+plt.savefig(file_name, bbox_inches='tight', dpi=100)
 print(f"\nSuccess! High-resolution heatmap with edge trajectories saved as: {file_name}")
 plt.show()

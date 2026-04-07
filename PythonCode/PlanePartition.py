@@ -166,8 +166,8 @@ configs = [
 ]
 
 # Resolution configurations (Increased to make the boundaries ultra-smooth)
-xi_res = 350
-lambda_res = 350
+xi_res = 300
+lambda_res = 300
 
 fig, axs = plt.subplots(2, 2, figsize=(20, 14))
 axs = axs.flatten()
@@ -266,6 +266,6 @@ for idx, cfg in enumerate(configs):
 
 plt.tight_layout()
 file_name = "plane_partition_density_jet.pdf"
-plt.savefig(file_name, bbox_inches='tight', dpi=300)
+plt.savefig(file_name, bbox_inches='tight', dpi=100)
 print(f"\nSuccess! The custom jet density maps have been saved as: {file_name}")
 plt.show()
